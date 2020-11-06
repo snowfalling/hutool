@@ -1,6 +1,7 @@
 package cn.hutool.core.collection;
 
 import cn.hutool.core.bean.BeanUtil;
+import cn.hutool.core.comparator.CompareUtil;
 import cn.hutool.core.comparator.PinyinComparator;
 import cn.hutool.core.comparator.PropertyComparator;
 import cn.hutool.core.convert.Convert;
@@ -50,6 +51,7 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.function.Function;
+import java.util.function.Predicate;
 
 /**
  * 集合相关工具类
@@ -102,22 +104,22 @@ public class CollUtil {
 	 * @return 并集的集合，返回 {@link ArrayList}
 	 */
 	public static <T> Collection<T> union(Collection<T> coll1, Collection<T> coll2) {
-		final ArrayList<T> list = new ArrayList<>();
 		if (isEmpty(coll1)) {
-			list.addAll(coll2);
+			return new ArrayList<>(coll2);
 		} else if (isEmpty(coll2)) {
-			list.addAll(coll1);
-		} else {
-			final Map<T, Integer> map1 = countMap(coll1);
-			final Map<T, Integer> map2 = countMap(coll2);
-			final Set<T> elts = newHashSet(coll2);
-			elts.addAll(coll1);
-			int m;
-			for (T t : elts) {
-				m = Math.max(Convert.toInt(map1.get(t), 0), Convert.toInt(map2.get(t), 0));
-				for (int i = 0; i < m; i++) {
-					list.add(t);
-				}
+			return new ArrayList<>(coll1);
+		}
+
+		final ArrayList<T> list = new ArrayList<>(Math.max(coll1.size(), coll2.size()));
+		final Map<T, Integer> map1 = countMap(coll1);
+		final Map<T, Integer> map2 = countMap(coll2);
+		final Set<T> elts = newHashSet(coll2);
+		elts.addAll(coll1);
+		int m;
+		for (T t : elts) {
+			m = Math.max(Convert.toInt(map1.get(t), 0), Convert.toInt(map2.get(t), 0));
+			for (int i = 0; i < m; i++) {
+				list.add(t);
 			}
 		}
 		return list;
@@ -224,8 +226,8 @@ public class CollUtil {
 	 * @return 交集的集合，返回 {@link ArrayList}
 	 */
 	public static <T> Collection<T> intersection(Collection<T> coll1, Collection<T> coll2) {
-		final ArrayList<T> list = new ArrayList<>();
 		if (isNotEmpty(coll1) && isNotEmpty(coll2)) {
+			final ArrayList<T> list = new ArrayList<>(Math.min(coll1.size(), coll2.size()));
 			final Map<T, Integer> map1 = countMap(coll1);
 			final Map<T, Integer> map2 = countMap(coll2);
 			final Set<T> elts = newHashSet(coll2);
@@ -236,8 +238,10 @@ public class CollUtil {
 					list.add(t);
 				}
 			}
+			return list;
 		}
-		return list;
+
+		return new ArrayList<>();
 	}
 
 	/**
@@ -411,6 +415,26 @@ public class CollUtil {
 	}
 
 	/**
+	 * 自定义函数判断集合是否包含某类值
+	 *
+	 * @param collection  集合
+	 * @param containFunc 自定义判断函数
+	 * @param <T>         值类型
+	 * @return 是否包含自定义规则的值
+	 */
+	public static <T> boolean contains(Collection<T> collection, Predicate<? super T> containFunc) {
+		if (isEmpty(collection)) {
+			return false;
+		}
+		for (T t : collection) {
+			if (containFunc.test(t)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
 	 * 其中一个集合在另一个集合中是否至少包含一个元素，即是两个集合是否至少有一个共同的元素
 	 *
 	 * @param coll1 集合1
@@ -546,7 +570,7 @@ public class CollUtil {
 	 */
 	public static <T> List<T> popPart(Stack<T> surplusAlaDatas, int partSize) {
 		if (isEmpty(surplusAlaDatas)) {
-			return null;
+			return ListUtil.empty();
 		}
 
 		final List<T> currentAlaDatas = new ArrayList<>();
@@ -575,7 +599,7 @@ public class CollUtil {
 	 */
 	public static <T> List<T> popPart(Deque<T> surplusAlaDatas, int partSize) {
 		if (isEmpty(surplusAlaDatas)) {
-			return null;
+			return ListUtil.empty();
 		}
 
 		final List<T> currentAlaDatas = new ArrayList<>();
@@ -971,8 +995,13 @@ public class CollUtil {
 		} else if (collectionType.isAssignableFrom(LinkedHashSet.class)) {
 			list = new LinkedHashSet<>();
 		} else if (collectionType.isAssignableFrom(TreeSet.class)) {
-			//noinspection SortedCollectionWithNonComparableKeys
-			list = new TreeSet<>();
+			list = new TreeSet<>((o1, o2) -> {
+				// 优先按照对象本身比较，如果没有实现比较接口，默认按照toString内容比较
+				if (o1 instanceof Comparable) {
+					return ((Comparable<T>) o1).compareTo(o2);
+				}
+				return CompareUtil.compare(o1.toString(), o2.toString());
+			});
 		} else if (collectionType.isAssignableFrom(EnumSet.class)) {
 			list = (Collection<T>) EnumSet.noneOf((Class<Enum>) ClassUtil.getTypeArgument(collectionType));
 		}
@@ -1080,10 +1109,27 @@ public class CollUtil {
 	 */
 	public static <T> List<T> sub(Collection<T> list, int start, int end, int step) {
 		if (list == null || list.isEmpty()) {
-			return null;
+			return ListUtil.empty();
 		}
 
 		return sub(new ArrayList<>(list), start, end, step);
+	}
+
+	/**
+	 * 对集合按照指定长度分段，每一个段为单独的集合，返回这个集合的列表
+	 * <p>
+	 * 需要特别注意的是，此方法调用{@link List#subList(int, int)}切分List，
+	 * 此方法返回的是原List的视图，也就是说原List有变更，切分后的结果也会变更。
+	 * </p>
+	 *
+	 * @param <T>  集合元素类型
+	 * @param list 列表
+	 * @param size 每个段的长度
+	 * @return 分段列表
+	 * @since 5.4.5
+	 */
+	public static <T> List<List<T>> splitList(List<T> list, int size) {
+		return ListUtil.split(list, size);
 	}
 
 	/**
@@ -1325,19 +1371,22 @@ public class CollUtil {
 	 * @param <R>        返回集合元素类型
 	 * @param collection 原集合
 	 * @param func       编辑函数
-	 * @param ignoreNull 是否忽略空值
+	 * @param ignoreNull 是否忽略空值，这里的空值包括函数处理前和处理后的null值
 	 * @return 抽取后的新列表
 	 * @since 5.3.5
 	 */
-	public static <T, R> List<R> map(Iterable<T> collection, Function<T, R> func, boolean ignoreNull) {
+	public static <T, R> List<R> map(Iterable<T> collection, Function<? super T, ? extends R> func, boolean ignoreNull) {
 		final List<R> fieldValueList = new ArrayList<>();
 		if (null == collection) {
 			return fieldValueList;
 		}
 
 		R value;
-		for (T bean : collection) {
-			value = func.apply(bean);
+		for (T t : collection) {
+			if(null == t && ignoreNull){
+				continue;
+			}
+			value = func.apply(t);
 			if (null == value && ignoreNull) {
 				continue;
 			}
@@ -1747,7 +1796,7 @@ public class CollUtil {
 	 */
 	public static <K, V> Map<K, V> zip(Collection<K> keys, Collection<V> values) {
 		if (isEmpty(keys) || isEmpty(values)) {
-			return null;
+			return MapUtil.empty();
 		}
 
 		int entryCount = Math.min(keys.size(), values.size());
@@ -2002,7 +2051,7 @@ public class CollUtil {
 		if (null == collection || null == value) {
 			return collection;
 		}
-		if (TypeUtil.isUnknow(elementType)) {
+		if (TypeUtil.isUnknown(elementType)) {
 			// 元素类型为空时，使用Object类型来接纳所有类型
 			elementType = Object.class;
 		}
@@ -2500,6 +2549,18 @@ public class CollUtil {
 	// ------------------------------------------------------------------------------------------------- forEach
 
 	/**
+	 * 循环遍历 {@link Iterable}，使用{@link Consumer} 接受遍历的每条数据，并针对每条数据做处理
+	 *
+	 * @param <T>      集合元素类型
+	 * @param iterable {@link Iterable}
+	 * @param consumer {@link Consumer} 遍历的每条数据处理器
+	 * @since 5.4.7
+	 */
+	public static <T> void forEach(Iterable<T> iterable, Consumer<T> consumer) {
+		forEach(iterable.iterator(), consumer);
+	}
+
+	/**
 	 * 循环遍历 {@link Iterator}，使用{@link Consumer} 接受遍历的每条数据，并针对每条数据做处理
 	 *
 	 * @param <T>      集合元素类型
@@ -2816,14 +2877,30 @@ public class CollUtil {
 		}
 	}
 
+	/**
+	 * 使用给定的转换函数，转换源集合为新类型的集合
+	 *
+	 * @param <F>        源元素类型
+	 * @param <T>        目标元素类型
+	 * @param collection 集合
+	 * @param function   转换函数
+	 * @return 新类型的集合
+	 * @since 5.4.3
+	 */
+	public static <F, T> Collection<T> trans(Collection<F> collection, Function<? super F, ? extends T> function) {
+		return new TransCollection<>(collection, function);
+	}
+
 	// ---------------------------------------------------------------------------------------------- Interface start
 
 	/**
-	 * 针对一个参数做相应的操作
+	 * 针对一个参数做相应的操作<br>
+	 * 此函数接口与JDK8中Consumer不同是多提供了index参数，用于标记遍历对象是第几个。
 	 *
 	 * @param <T> 处理参数类型
 	 * @author Looly
 	 */
+	@FunctionalInterface
 	public interface Consumer<T> {
 		/**
 		 * 接受并处理一个参数
@@ -2841,6 +2918,7 @@ public class CollUtil {
 	 * @param <V> VALUE类型
 	 * @author Looly
 	 */
+	@FunctionalInterface
 	public interface KVConsumer<K, V> {
 		/**
 		 * 接受并处理一对参数

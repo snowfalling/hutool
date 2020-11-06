@@ -483,13 +483,7 @@ public class URLUtil {
 	 * @throws UtilException 包装URISyntaxException
 	 */
 	public static String getPath(String uriStr) {
-		URI uri;
-		try {
-			uri = new URI(uriStr);
-		} catch (URISyntaxException e) {
-			throw new UtilException(e);
-		}
-		return uri.getPath();
+		return toURI(uriStr).getPath();
 	}
 
 	/**
@@ -509,7 +503,7 @@ public class URLUtil {
 		String path = null;
 		try {
 			// URL对象的getPath方法对于包含中文或空格的问题
-			path = URLUtil.toURI(url).getPath();
+			path = toURI(url).getPath();
 		} catch (UtilException e) {
 			// ignore
 		}
@@ -569,7 +563,7 @@ public class URLUtil {
 			location = encode(location);
 		}
 		try {
-			return new URI(location);
+			return new URI(StrUtil.trim(location));
 		} catch (URISyntaxException e) {
 			throw new UtilException(e);
 		}
@@ -770,6 +764,25 @@ public class URLUtil {
 				((HttpURLConnection) conn).disconnect();
 			}
 		}
+	}
+
+	/**
+	 * Data URI Scheme封装，数据格式为Base64。data URI scheme 允许我们使用内联（inline-code）的方式在网页中包含数据，<br>
+	 * 目的是将一些小的数据，直接嵌入到网页中，从而不用再从外部文件载入。常用于将图片嵌入网页。
+	 *
+	 * <p>
+	 * Data URI的格式规范：
+	 * <pre>
+	 *     data:[&lt;mime type&gt;][;charset=&lt;charset&gt;][;&lt;encoding&gt;],&lt;encoded data&gt;
+	 * </pre>
+	 *
+	 * @param mimeType 可选项（null表示无），数据类型（image/png、text/plain等）
+	 * @param data     编码后的数据
+	 * @return Data URI字符串
+	 * @since 5.3.11
+	 */
+	public static String getDataUriBase64(String mimeType, String data) {
+		return getDataUri(mimeType, null, "BASE64", data);
 	}
 
 	/**

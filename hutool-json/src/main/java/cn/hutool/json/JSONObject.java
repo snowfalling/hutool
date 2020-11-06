@@ -1,8 +1,9 @@
 package cn.hutool.json;
 
-import cn.hutool.core.bean.BeanDesc.PropDesc;
 import cn.hutool.core.bean.BeanPath;
 import cn.hutool.core.bean.BeanUtil;
+import cn.hutool.core.bean.copier.BeanCopier;
+import cn.hutool.core.bean.copier.CopyOptions;
 import cn.hutool.core.collection.CollectionUtil;
 import cn.hutool.core.convert.Convert;
 import cn.hutool.core.map.CaseInsensitiveLinkedMap;
@@ -19,11 +20,11 @@ import cn.hutool.json.serialize.JSONSerializer;
 
 import java.io.IOException;
 import java.io.Writer;
-import java.lang.reflect.Method;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.Collection;
 import java.util.Enumeration;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.ResourceBundle;
@@ -351,6 +352,18 @@ public class JSONObject implements JSON, JSONGetter<String>, Map<String, Object>
 	@Override
 	@Deprecated
 	public JSONObject put(String key, Object value) throws JSONException {
+		return set(key, value);
+	}
+
+	/**
+	 * 设置键值对到JSONObject中，在忽略null模式下，如果值为<code>null</code>，将此键移除
+	 *
+	 * @param key   键
+	 * @param value 值对象. 可以是以下类型: Boolean, Double, Integer, JSONArray, JSONObject, Long, String, or the JSONNull.NULL.
+	 * @return this.
+	 * @throws JSONException 值是无穷数字抛出此异常
+	 */
+	public JSONObject set(String key, Object value) throws JSONException {
 		if (null == key) {
 			return this;
 		}
@@ -367,19 +380,6 @@ public class JSONObject implements JSON, JSONGetter<String>, Map<String, Object>
 	}
 
 	/**
-	 * 设置键值对到JSONObject中，在忽略null模式下，如果值为<code>null</code>，将此键移除
-	 *
-	 * @param key   键
-	 * @param value 值对象. 可以是以下类型: Boolean, Double, Integer, JSONArray, JSONObject, Long, String, or the JSONNull.NULL.
-	 * @return this.
-	 * @throws JSONException 值是无穷数字抛出此异常
-	 */
-	public JSONObject set(String key, Object value) throws JSONException {
-		put(key, value);
-		return this;
-	}
-
-	/**
 	 * 一次性Put 键值对，如果key已经存在抛出异常，如果键值中有null值，忽略
 	 *
 	 * @param key   键
@@ -392,7 +392,7 @@ public class JSONObject implements JSON, JSONGetter<String>, Map<String, Object>
 			if (rawHashMap.containsKey(key)) {
 				throw new JSONException("Duplicate key \"{}\"", key);
 			}
-			this.put(key, value);
+			this.set(key, value);
 		}
 		return this;
 	}
@@ -407,7 +407,7 @@ public class JSONObject implements JSON, JSONGetter<String>, Map<String, Object>
 	 */
 	public JSONObject putOpt(String key, Object value) throws JSONException {
 		if (key != null && value != null) {
-			this.put(key, value);
+			this.set(key, value);
 		}
 		return this;
 	}
@@ -415,7 +415,7 @@ public class JSONObject implements JSON, JSONGetter<String>, Map<String, Object>
 	@Override
 	public void putAll(Map<? extends String, ?> m) {
 		for (Entry<? extends String, ?> entry : m.entrySet()) {
-			this.put(entry.getKey(), entry.getValue());
+			this.set(entry.getKey(), entry.getValue());
 		}
 	}
 
@@ -432,7 +432,7 @@ public class JSONObject implements JSON, JSONGetter<String>, Map<String, Object>
 		InternalJSONUtil.testValidity(value);
 		Object object = this.getObj(key);
 		if (object == null) {
-			this.put(key, value instanceof JSONArray ? new JSONArray(this.config).set(value) : value);
+			this.set(key, value instanceof JSONArray ? new JSONArray(this.config).set(value) : value);
 		} else if (object instanceof JSONArray) {
 			((JSONArray) object).set(value);
 		} else {
@@ -472,19 +472,19 @@ public class JSONObject implements JSON, JSONGetter<String>, Map<String, Object>
 	public JSONObject increment(String key) throws JSONException {
 		Object value = this.getObj(key);
 		if (value == null) {
-			this.put(key, 1);
+			this.set(key, 1);
 		} else if (value instanceof BigInteger) {
-			this.put(key, ((BigInteger) value).add(BigInteger.ONE));
+			this.set(key, ((BigInteger) value).add(BigInteger.ONE));
 		} else if (value instanceof BigDecimal) {
-			this.put(key, ((BigDecimal) value).add(BigDecimal.ONE));
+			this.set(key, ((BigDecimal) value).add(BigDecimal.ONE));
 		} else if (value instanceof Integer) {
-			this.put(key, (Integer) value + 1);
+			this.set(key, (Integer) value + 1);
 		} else if (value instanceof Long) {
-			this.put(key, (Long) value + 1);
+			this.set(key, (Long) value + 1);
 		} else if (value instanceof Double) {
-			this.put(key, (Double) value + 1);
+			this.set(key, (Double) value + 1);
 		} else if (value instanceof Float) {
-			this.put(key, (Float) value + 1);
+			this.set(key, (Float) value + 1);
 		} else {
 			throw new JSONException("Unable to increment [" + JSONUtil.quote(key) + "].");
 		}
@@ -620,36 +620,12 @@ public class JSONObject implements JSON, JSONGetter<String>, Map<String, Object>
 	 * @param bean Bean对象
 	 */
 	private void populateMap(Object bean) {
-		final Collection<PropDesc> props = BeanUtil.getBeanDesc(bean.getClass()).getProps();
-
-		Method getter;
-		Object value;
-		for (PropDesc prop : props) {
-			// 得到property对应的getter方法
-			getter = prop.getGetter();
-			if (null == getter) {
-				// 无Getter跳过
-				continue;
-			}
-
-			// 只读取有getter方法的属性
-			try {
-				value = getter.invoke(bean);
-			} catch (Exception ignore) {
-				// 忽略读取失败的属性
-				continue;
-			}
-
-			if (ObjectUtil.isNull(value) && this.config.isIgnoreNullValue()) {
-				// 值为null且用户定义跳过则跳过
-				continue;
-			}
-
-			if (value != bean) {
-				// 防止循环引用
-				this.put(prop.getFieldName(), value);
-			}
-		}
+		BeanCopier.create(bean, this,
+				CopyOptions.create()
+						.setIgnoreCase(config.isIgnoreCase())
+						.setIgnoreError(true)
+						.setIgnoreNullValue(config.isIgnoreNullValue())
+		).copy();
 	}
 
 	/**
@@ -669,15 +645,26 @@ public class JSONObject implements JSON, JSONGetter<String>, Map<String, Object>
 			return;
 		}
 
+		// 自定义序列化
 		final JSONSerializer serializer = GlobalSerializeMapping.getSerializer(source.getClass());
 		if (serializer instanceof JSONObjectSerializer) {
-			// 自定义序列化
 			serializer.serialize(this, source);
-		} else if (source instanceof Map) {
+			return;
+		}
+
+		if(ArrayUtil.isArray(source) || source instanceof Iterable || source instanceof Iterator){
+			// 不支持集合类型转换为JSONObject
+			throw new JSONException("Unsupported type [{}] to JSONObject!", source.getClass());
+		}
+
+		if (source instanceof Map) {
 			// Map
 			for (final Entry<?, ?> e : ((Map<?, ?>) source).entrySet()) {
-				this.put(Convert.toStr(e.getKey()), e.getValue());
+				this.set(Convert.toStr(e.getKey()), e.getValue());
 			}
+		}else if (source instanceof Map.Entry) {
+			final Map.Entry entry = (Map.Entry) source;
+			this.set(Convert.toStr(entry.getKey()), entry.getValue());
 		} else if (source instanceof CharSequence) {
 			// 可能为JSON字符串
 			init((CharSequence) source);
@@ -690,7 +677,11 @@ public class JSONObject implements JSON, JSONGetter<String>, Map<String, Object>
 		} else if (BeanUtil.isReadableBean(source.getClass())) {
 			// 普通Bean
 			this.populateMap(source);
+		} else {
+			// 不支持对象类型转换为JSONObject
+			throw new JSONException("Unsupported type [{}] to JSONObject!", source.getClass());
 		}
+
 	}
 
 	/**

@@ -47,6 +47,11 @@ public class RandomUtil {
 	 * 获取随机数生成器对象<br>
 	 * ThreadLocalRandom是JDK 7之后提供并发产生随机数，能够解决多个线程发生的竞争争夺。
 	 *
+	 * <p>
+	 * 注意：此方法返回的{@link ThreadLocalRandom}不可以在多线程环境下共享对象，否则有重复随机数问题。
+	 * 见：https://www.jianshu.com/p/89dfe990295c
+	 * </p>
+	 *
 	 * @return {@link ThreadLocalRandom}
 	 * @since 3.1.2
 	 */
@@ -118,7 +123,7 @@ public class RandomUtil {
 	}
 
 	/**
-	 * 获得随机数[0, 2^32)
+	 * 获得随机数int值
 	 *
 	 * @return 随机数
 	 */
@@ -305,6 +310,9 @@ public class RandomUtil {
 	 * @return 随机元素
 	 */
 	public static <T> T randomEle(List<T> list, int limit) {
+		if (list.size() < limit){
+			limit = list.size();
+		}
 		return list.get(randomInt(limit));
 	}
 
@@ -330,6 +338,9 @@ public class RandomUtil {
 	 * @since 3.3.0
 	 */
 	public static <T> T randomEle(T[] array, int limit) {
+		if (array.length < limit){
+			limit = array.length;
+		}
 		return array[randomInt(limit)];
 	}
 
@@ -517,10 +528,12 @@ public class RandomUtil {
 	 *
 	 * @return 随机颜色
 	 * @since 4.1.5
+	 * @deprecated 使用ImgUtil.randomColor()
 	 */
+	@Deprecated
 	public static Color randomColor() {
 		final Random random = getRandom();
-		return new Color(random.nextInt(255), random.nextInt(255), random.nextInt(255));
+		return new Color(random.nextInt(256), random.nextInt(256), random.nextInt(256));
 	}
 
 	/**
@@ -599,4 +612,5 @@ public class RandomUtil {
 
 		return DateUtil.offset(baseDate, dateField, randomInt(min, max));
 	}
+
 }
