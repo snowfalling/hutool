@@ -5,9 +5,12 @@ import cn.hutool.core.bean.copier.CopyOptions;
 import cn.hutool.core.bean.copier.ValueProvider;
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.map.MapUtil;
+import cn.hutool.core.util.ArrayUtil;
+import cn.hutool.core.util.StrUtil;
 import lombok.Data;
 import lombok.Getter;
 import lombok.Setter;
+import lombok.ToString;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -16,13 +19,7 @@ import java.io.Serializable;
 import java.lang.reflect.Type;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.Arrays;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 
 /**
  * Bean工具单元测试
@@ -199,6 +196,8 @@ public class BeanUtilTest {
 		person.setName("测试A11");
 		person.setSubName("sub名字");
 		person.setSlow(true);
+		person.setBooleana(true);
+		person.setBooleanb(true);
 
 		Map<String, Object> map = BeanUtil.beanToMap(person);
 		Assert.assertEquals("sub名字", map.get("aliasSubName"));
@@ -209,9 +208,13 @@ public class BeanUtilTest {
 		Map<String, Object> map = MapUtil.newHashMap();
 		map.put("aliasSubName", "sub名字");
 		map.put("slow", true);
+		map.put("is_booleana", "1");
+		map.put("is_booleanb", true);
 
 		final SubPersonWithAlias subPersonWithAlias = BeanUtil.toBean(map, SubPersonWithAlias.class);
 		Assert.assertEquals("sub名字", subPersonWithAlias.getSubName());
+		Assert.assertTrue(subPersonWithAlias.isBooleana());
+		Assert.assertEquals(true, subPersonWithAlias.getBooleanb());
 	}
 
 	@Test
@@ -358,11 +361,14 @@ public class BeanUtilTest {
 
 	@Getter
 	@Setter
+	@ToString
 	public static class SubPersonWithAlias extends Person {
 		// boolean参数值非isXXX形式
 		@Alias("aliasSubName")
 		private String subName;
 		private Boolean slow;
+		private boolean booleana;
+		private Boolean booleanb;
 	}
 
 	@Getter
@@ -460,6 +466,18 @@ public class BeanUtilTest {
 		Assert.assertNull(newFood.getCode());
 	}
 
+	@Test
+	public void copyBeanPropertiesFilterTest() {
+		Food info = new Food();
+		info.setBookID("0");
+		info.setCode("");
+		Food newFood = new Food();
+		CopyOptions copyOptions = CopyOptions.create().setPropertiesFilter((f, v) -> !(v instanceof CharSequence) || StrUtil.isNotBlank(v.toString()));
+		BeanUtil.copyProperties(info, newFood, copyOptions);
+		Assert.assertEquals(info.getBookID(), newFood.getBookID());
+		Assert.assertNull(newFood.getCode());
+	}
+
 	@Data
 	public static class Food {
 		@Alias("bookId")
@@ -536,5 +554,36 @@ public class BeanUtilTest {
 		private Long rowStatus;
 		private Long sortOrder;
 		private Date createTime;
+	}
+
+	@Test
+	public void getFieldValue(){
+		TestPojo testPojo = new TestPojo();
+		testPojo.setName("名字");
+
+		TestPojo2 testPojo2 = new TestPojo2();
+		testPojo2.setAge(2);
+		TestPojo2 testPojo3 = new TestPojo2();
+		testPojo3.setAge(3);
+
+
+		testPojo.setTestPojo2List(new TestPojo2[]{testPojo2,testPojo3});
+
+		BeanPath beanPath = BeanPath.create("testPojo2List.age");
+		Object o = beanPath.get(testPojo);
+
+		Assert.assertEquals(Integer.valueOf(2), ArrayUtil.get(o,0));
+		Assert.assertEquals(Integer.valueOf(3), ArrayUtil.get(o,1));
+	}
+
+	@Data
+	public static class TestPojo{
+		private String name;
+		private TestPojo2[] testPojo2List;
+	}
+
+	@Data
+	public static class TestPojo2{
+		private int age;
 	}
 }
